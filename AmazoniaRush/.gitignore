@@ -1,0 +1,7 @@
+.build/
+.cargo-build/
+DerivedData/
+Vendor/sim/
+Vendor/VerdantOracle.xcframework/
+AmazoniaRush.xcodeproj/xcuserdata/
+AmazoniaRush.xcodeproj/project.xcworkspace/xcuserdata/

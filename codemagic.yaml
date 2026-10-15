@@ -1,0 +1,86 @@
+# Amazonia Rush — native iOS (UIKit + SpriteKit + a Rust core), no Flutter, no pods.
+# The Rust static library is rebuilt from source on every run, so the archive
+# never depends on whatever was committed under AmazoniaRush/Vendor.
+
+workflows:
+  ios-release:
+    name: Amazonia Rush — App Store
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    integrations:
+      app_store_connect: AmazoniaRushKey   # name of the key in Codemagic → Integrations
+
+    environment:
+      groups:
+        - code-signing                     # must hold CERTIFICATE_PRIVATE_KEY
+      xcode: latest
+      vars:
+        XC_PROJECT: "AmazoniaRush/AmazoniaRush.xcodeproj"
+        XC_SCHEME: "AmazoniaRush"
+        BUNDLE_ID: "com.amazora.marketgame"
+        APP_STORE_APPLE_ID: "6822018943"
+        MARKETING_VERSION: "1.0"
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: ios-white-part
+          include: true
+
+    scripts:
+      - name: Build the Rust core for device
+        script: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-apple-ios
+          cd AmazoniaRush
+          export CARGO_TARGET_DIR="$PWD/.cargo-build"
+          cargo run -q -p lexicon_forge          # regenerates App/Generated/Lexeme.swift
+          cargo test -q -p verdant_oracle        # the 16 rule proofs must hold
+          cargo build -q -p verdant_oracle --release --target aarch64-apple-ios
+          mkdir -p Vendor/device
+          cp "$CARGO_TARGET_DIR/aarch64-apple-ios/release/libverdant_oracle.a" Vendor/device/
+          cp oracle/include/VerdantOracle.h App/Supporting/VerdantOracle.h
+
+      - name: Drop the development team so signing stays manual
+        script: |
+          # Automatic signing on CI looks for a development certificate that is
+          # not there; the fetched App Store profile is applied by use-profiles.
+          sed -i '' '/DEVELOPMENT_TEAM = /d' "$XC_PROJECT/project.pbxproj"
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/' "$XC_PROJECT/project.pbxproj"
+
+      - name: Fetch certificates and profiles
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --platform IOS \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles --project "$XC_PROJECT"
+
+      - name: Build IPA
+        script: |
+          # Empty on the very first upload, hence the fallback to zero.
+          LATEST=$(app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || true)
+          BUILD_NUMBER=$(( ${LATEST:-0} + 1 ))
+          echo "building $MARKETING_VERSION ($BUILD_NUMBER)"
+          xcode-project build-ipa \
+            --project "$XC_PROJECT" \
+            --scheme "$XC_SCHEME" \
+            --config Release \
+            --archive-xcargs "CODE_SIGN_STYLE=Manual CURRENT_PROJECT_VERSION=$BUILD_NUMBER MARKETING_VERSION=$MARKETING_VERSION"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false

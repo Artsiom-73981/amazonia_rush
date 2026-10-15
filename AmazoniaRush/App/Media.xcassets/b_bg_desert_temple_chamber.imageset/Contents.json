@@ -1,0 +1,15 @@
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "filename": "b_bg_desert_temple_chamber.jpg"
+    }
+  ],
+  "info": {
+    "author": "forge",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "original"
+  }
+}

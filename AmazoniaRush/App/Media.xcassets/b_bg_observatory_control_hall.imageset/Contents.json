@@ -1,0 +1,15 @@
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "filename": "b_bg_observatory_control_hall.jpg"
+    }
+  ],
+  "info": {
+    "author": "forge",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "original"
+  }
+}

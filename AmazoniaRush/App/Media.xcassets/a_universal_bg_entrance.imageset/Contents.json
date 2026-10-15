@@ -1,0 +1,15 @@
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "filename": "a_universal_bg_entrance.jpg"
+    }
+  ],
+  "info": {
+    "author": "forge",
+    "version": 1
+  },
+  "properties": {
+    "template-rendering-intent": "original"
+  }
+}

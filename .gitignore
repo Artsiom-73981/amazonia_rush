@@ -1,0 +1,11 @@
+.DS_Store
+AmazoniaRush/.build/
+AmazoniaRush/.cargo-build/
+AmazoniaRush/Vendor/sim/
+AmazoniaRush/Vendor/VerdantOracle.xcframework/
+AmazoniaRush/AmazoniaRush.xcodeproj/xcuserdata/
+AmazoniaRush/AmazoniaRush.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+build/
+*.xcarchive
+pariapp/

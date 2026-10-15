@@ -1,0 +1,4 @@
+module VerdantOracle {
+    header "VerdantOracle.h"
+    export *
+}

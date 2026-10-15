@@ -1,0 +1,11 @@
+[package]
+name = "verdant_oracle"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "verdant_oracle"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]

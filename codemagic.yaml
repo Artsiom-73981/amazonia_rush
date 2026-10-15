@@ -9,7 +9,7 @@ workflows:
     instance_type: mac_mini_m2
 
     integrations:
-      app_store_connect: AmazoniaRushKey   # name of the key in Codemagic → Integrations
+      app_store_connect: "code magic"   # name of the key in Codemagic → Integrations
 
     environment:
       groups:

@@ -108,7 +108,7 @@
 		AC04E09DD1A8036E79A917BB /* secret_found.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = secret_found.mp3; sourceTree = "<group>"; };
 		AECDFB8240A84664FE757CA7 /* sand_movement_start.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = sand_movement_start.mp3; sourceTree = "<group>"; };
 		AF87AA76974B9F1F4B3DCB62 /* new_area_discovered.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = new_area_discovered.mp3; sourceTree = "<group>"; };
-		B93CB536EBA4B19269E969DD /* AmazoniaRush.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AmazoniaRush.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B93CB536EBA4B19269E969DD /* Amazonia Rush.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Amazonia Rush.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		B9D17756122B4848A237B0DF /* Pylon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pylon.swift; sourceTree = "<group>"; };
 		BD989708A259D8F3482BF774 /* Frames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Frames.swift; sourceTree = "<group>"; };
 		C4246DD9C641272E044C59CC /* upgrade.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = upgrade.mp3; sourceTree = "<group>"; };
@@ -144,7 +144,7 @@
 		20758B58AD157428F28E268C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				B93CB536EBA4B19269E969DD /* AmazoniaRush.app */,
+				B93CB536EBA4B19269E969DD /* Amazonia Rush.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -289,7 +289,7 @@
 			packageProductDependencies = (
 			);
 			productName = AmazoniaRush;
-			productReference = B93CB536EBA4B19269E969DD /* AmazoniaRush.app */;
+			productReference = B93CB536EBA4B19269E969DD /* Amazonia Rush.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -302,7 +302,6 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					F7EDF2390EA701B8F52D4EBC = {
-						DevelopmentTeam = L996K7LXCP;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -412,6 +411,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = L996K7LXCP;
 				INFOPLIST_FILE = App/Supporting/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -506,6 +506,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = L996K7LXCP;
 				INFOPLIST_FILE = App/Supporting/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

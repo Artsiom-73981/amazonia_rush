@@ -218,7 +218,11 @@ enum Canvas {
     static let plateNames: [[UInt8]] = [
         [179, 212, 77, 216, 44, 232, 180, 252, 124, 24, 14, 4],
         [204, 17, 208, 219, 143, 151, 136, 117, 151],
-        [233, 51, 61, 220, 73, 124, 137, 251, 189, 97, 205, 23, 3, 140]
+        [233, 51, 61, 220, 73, 124, 137, 251, 189, 97, 205, 23, 3, 140],
+        [15, 101, 141, 208, 213, 22, 126, 101, 193, 161, 73, 38, 187, 90, 45, 178, 151, 228, 245],
+        [34, 166, 226, 221, 184, 217, 93, 232, 228, 226, 174, 35, 92, 4, 24, 59],
+        [69, 235, 71, 222, 27, 136, 52, 111, 13, 17, 2, 15, 250, 217, 254, 137, 222],
+        [152, 44, 164, 219, 254, 75, 19, 210, 40, 78, 99, 235, 129, 150]
     ]
 
     static let aAncientMechanisms: [Int] = [0, 1, 2, 3]
@@ -256,6 +260,14 @@ enum Canvas {
     static let bTraps: [Int] = [125, 126, 127, 128]
     static let bVegetation: [Int] = [129, 130, 131, 132]
     static let bVices: [Int] = [133, 134, 135, 136]
+
+    static let bootUprightPlate = 0
+    static let bootWidePlate = 1
+    static let brandWordmarkPlate = 2
+    static let gatePermitUprightPlate = 3
+    static let gatePermitWidePlate = 4
+    static let gateDarkUprightPlate = 5
+    static let gateDarkWidePlate = 6
 
     static let aWorldExplorationMapScene = 0
     static let aBgLocation10Scene = 1

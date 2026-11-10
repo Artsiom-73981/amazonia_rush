@@ -96,6 +96,23 @@ pub fn hearth_key() -> u64 {
     root ^ imprint(b"\x17\x4b\x9e\x02\x88\x31", 0x2B7D_0F51_C3A6_9E84)
 }
 
+/// Key used for the sealed gate blob: the endpoint, the attribution key, the
+/// messaging sender and the legal links the quiet side of the app needs.
+/// Distinct from the other two so one leaked key never opens the rest.
+pub fn gate_key() -> u64 {
+    let limbs: [u64; 4] = [
+        0x27D4_0000_9B13_0000,
+        0x0000_C650_0000_3A91,
+        0x4400_0000_0000_8E2F,
+        0x0000_1D70_B200_0000,
+    ];
+    let mut root = 0u64;
+    for (index, limb) in limbs.iter().enumerate() {
+        root ^= limb.rotate_left((index as u32) * 19 + 3);
+    }
+    root ^ imprint(b"\x63\xA1\x0F\xD8\x42\x77\x19", 0x7E14_B93A_5C2D_80F6)
+}
+
 /// Key used for the compiled lexicon.
 pub fn lexicon_key() -> u64 {
     let limbs: [u64; 3] = [

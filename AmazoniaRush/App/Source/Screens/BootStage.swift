@@ -20,6 +20,19 @@ final class BootStage: Stage {
     private var chapter = 0
     private var opened = Date()
     private var handed = false
+    private var deciding = false
+    /// Observer that waits for the app to become active before the decision
+    /// (and the attribution SDK with it) is started. Cleared once it fires.
+    private var activeToken: NSObjectProtocol?
+    /// Where this launch belongs, once the quiet side has decided. The bar only
+    /// tops out after this is known, so a full bar always means "about to open".
+    private var verdict: Hearth.Where?
+    /// Set once the common warm-up chapters have all run. The bar can only
+    /// reach full after both this is true and a destination is known.
+    private var chaptersDone = false
+    /// Number of warm-up chapters in `march`; the bar's checkpoints are spaced
+    /// across them.
+    private let chapterCount = 5
 
     override func assemble() {
         view.backgroundColor = Hide.pitch
@@ -72,15 +85,17 @@ final class BootStage: Stage {
             wordmark.widthAnchor.constraint(lessThanOrEqualTo: guides.widthAnchor, multiplier: 0.78),
             wordmark.heightAnchor.constraint(lessThanOrEqualTo: guides.heightAnchor, multiplier: 0.3),
 
+            // The loading text, its dots and the bar sit at the foot of the
+            // screen; the wordmark keeps the centre to itself.
+            barShell.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            barShell.widthAnchor.constraint(equalTo: guides.widthAnchor, multiplier: 0.62),
+            barShell.heightAnchor.constraint(equalToConstant: 14),
+            barShell.bottomAnchor.constraint(equalTo: guides.bottomAnchor, constant: -28),
+
             loading.trailingAnchor.constraint(equalTo: cluster.leadingAnchor, constant: -6),
             loading.centerYAnchor.constraint(equalTo: cluster.centerYAnchor),
             cluster.centerXAnchor.constraint(equalTo: view.centerXAnchor, constant: 26),
-            cluster.topAnchor.constraint(equalTo: view.centerYAnchor, constant: 6),
-
-            barShell.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            barShell.topAnchor.constraint(equalTo: cluster.bottomAnchor, constant: 22),
-            barShell.widthAnchor.constraint(equalTo: guides.widthAnchor, multiplier: 0.62),
-            barShell.heightAnchor.constraint(equalToConstant: 14),
+            cluster.bottomAnchor.constraint(equalTo: barShell.topAnchor, constant: -16),
         ])
 
         // Shaped sizing so the mark keeps its aspect on both plates. The width
@@ -97,9 +112,10 @@ final class BootStage: Stage {
             wish.isActive = true
         }
 
-        // The word itself arrives with the first chapter: until the core is
-        // awake there is nothing to read it out of.
-        loading.text = ""
+        // The core is already awake by the time the boot screen is built (the
+        // app delegate wakes it before the first frame), so the word is read
+        // out immediately rather than waiting for the first warm-up chapter.
+        loading.text = Vault.say(Lexeme.bootLoading)
         bar.pour(0, animated: false)
         swayDots()
     }
@@ -111,7 +127,40 @@ final class BootStage: Stage {
         let link = CADisplayLink(target: self, selector: #selector(beat))
         link.add(to: .main, forMode: .common)
         pulse = link
+        // The warm-up and the destination decision run side by side: the bar
+        // walks through its checkpoints while the quiet side is asked where
+        // this launch belongs. A dead connection is caught by the decision,
+        // not the warm-up, so an offline visitor is shown the no-connection
+        // screen promptly instead of watching a full bar first.
         march()
+        beginDecisionWhenActive()
+    }
+
+    /// Kicks off the destination decision, but only once the app is actually
+    /// active. A cold launch fires `viewDidAppear` a beat before the scene
+    /// becomes active, and the attribution SDK's `start()` and the ATT prompt
+    /// are both dropped on the floor while the app is still inactive — which
+    /// files a paid install as organic and sends the visitor to the game
+    /// instead of the quiet side. Waiting for active is what the old
+    /// run-after-the-warm-up order used to give for free.
+    private func beginDecisionWhenActive() {
+        guard activeToken == nil else { return }
+        if UIApplication.shared.applicationState == .active {
+            launchDecision()
+            return
+        }
+        activeToken = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            if let token = self.activeToken {
+                NotificationCenter.default.removeObserver(token)
+                self.activeToken = nil
+            }
+            self.launchDecision()
+        }
     }
 
     override func viewWillTransition(
@@ -122,9 +171,27 @@ final class BootStage: Stage {
         coordinator.animate(alongsideTransition: { _ in self.dressPlate(size) }, completion: nil)
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Pick the plate that matches however the device is actually held,
+        // including a launch that starts in landscape before any rotation
+        // transition fires.
+        dressPlate(view.bounds.size)
+    }
+
+    /// Whether the plate currently shown is the wide one. Kept so the image is
+    /// only swapped when the device actually flips between upright and on its
+    /// side; `viewDidLayoutSubviews` fires several times per rotation and
+    /// re-setting the full-screen image each pass was adding needless work to
+    /// an already busy first-launch main thread.
+    private var plateWide: Bool?
+
     private func dressPlate(_ size: CGSize? = nil) {
         let span = size ?? view.bounds.size
-        plate.image = Vault.plate(span.width > span.height ? 1 : 0)
+        let wide = span.width > span.height
+        guard wide != plateWide else { return }
+        plateWide = wide
+        plate.image = Vault.plate(wide ? 1 : 0)
     }
 
     // --- animation ---------------------------------------------------------
@@ -163,14 +230,22 @@ final class BootStage: Stage {
         shown = min(shown, target)
         bar.pour(shown, animated: false)
 
-        if shown >= 0.999, !handed, Date().timeIntervalSince(opened) > 1.9 {
+        // A launch into the game or the quiet side only hands over once the
+        // warm-up is finished, the bar has filled and the splash has been
+        // seen — so a full bar always means "about to open". The no-connection
+        // case does not pass through here: it is handed over the instant the
+        // decision lands (see `launchDecision`), without filling the bar.
+        guard let where_ = verdict, !handed, chaptersDone else { return }
+        if case .stalled = where_ { return }
+        if shown >= 0.999, Date().timeIntervalSince(opened) > 1.4 {
             handed = true
-            hand()
+            hand(where_)
         }
     }
 
     /// Each chapter does one slice of real work, then yields so the bar moves.
     private func march() {
+        guard !handed else { return }
         let chapters: [() -> Void] = [
             {
                 Deck.shared.prepare()
@@ -198,39 +273,170 @@ final class BootStage: Stage {
         ]
 
         guard chapter < chapters.count else {
-            target = 1
+            // The common warm-up is done. The decision (running in parallel)
+            // now owns the last stretch of the bar; it tops out only once a
+            // destination is known.
+            chaptersDone = true
+            recomputeTarget()
             return
         }
 
         let step = chapter
         DispatchQueue.main.async {
+            guard !self.handed else { return }
             chapters[step]()
             self.chapter += 1
-            self.target = Float(self.chapter) / Float(chapters.count) * 0.97
+            // Chapters fill the bar through checkpoints only part of the way;
+            // the remainder is reserved for the decision and the hand-over.
             self.loading.text = Vault.say(Lexeme.bootLoading)
+            self.recomputeTarget()
             self.march()
         }
     }
 
-    private func hand() {
-        pulse?.invalidate()
-        pulse = nil
-        Deck.shared.cue(Canvas.loadingCompleteCue, gain: 0.8)
+    /// Where the bar should be heading right now. It climbs through the
+    /// warm-up checkpoints, holds just short of full while the destination is
+    /// still being decided, and only reaches 1 once both the warm-up is done
+    /// and a real launch (game or quiet side) has been settled.
+    private func recomputeTarget() {
+        if chaptersDone, let where_ = verdict, !where_.isStalled {
+            target = 1
+        } else if chaptersDone {
+            target = 0.92
+        } else {
+            target = Float(chapter) / Float(chapterCount) * 0.7
+        }
+    }
+
+    /// Settles the audio preferences, then asks the quiet side where this
+    /// launch belongs. Runs from the first frame, in parallel with the warm-up,
+    /// so a dead connection surfaces the no-connection screen promptly rather
+    /// than after the bar has already filled.
+    private func launchDecision() {
+        guard !deciding else { return }
+        deciding = true
+        Deck.shared.prepare()
         var scroll = Oracle.shared.ask(Rite.hub)
         let hub = HubView(&scroll)
         Deck.shared.obey(hub.switches)
         #if DEBUG
-        // A screenshot pass drives the app from the command line: the
-        // simulator here is headless, so there is no other way in.
+        // A screenshot pass drives the app from the command line: the simulator
+        // here is headless, so there is no other way in.
         if let hall = Tour.hall {
+            pulse?.invalidate(); pulse = nil
             Director.shared.openTemple(Halls.roots(), at: hall)
             Tour.walk()
             return
         }
+        if let wanted = Tour.gate {
+            pulse?.invalidate(); pulse = nil
+            switch wanted {
+            case "permit": Director.shared.go(PromptStage())
+            case "nowifi": Director.shared.go(DeadEndStage())
+            // Exercises the granted path without spoofing attribution: the
+            // destination is the same shape the backend returns.
+            case "quiet": Director.shared.go(ScreenStage(address: "https://web.team-s.club/"))
+            default: break
+            }
+            return
+        }
         #endif
-        // Straight into the game. The player is never asked for anything:
-        // there are no notifications in this build, so no system prompt
-        // exists to postpone.
-        Director.shared.openTemple(Halls.roots())
+        // The quiet side decides what this launch is. Everything else on this
+        // screen is the same for every player; the destination depends on what
+        // the backend says about them.
+        Hearth.shared.decide { [weak self] where_ in
+            guard let self else { return }
+            self.verdict = where_
+            if where_.isStalled {
+                // No connection and nothing decided: the no-connection screen
+                // is a dead end, not a launch, so it is shown at once without
+                // filling the bar — a full bar would pretend the load finished.
+                self.handStalled()
+            } else {
+                self.recomputeTarget()
+            }
+        }
+    }
+
+    /// Leaves straight for the no-connection screen, without touching the bar.
+    private func handStalled() {
+        guard !handed else { return }
+        handed = true
+        pulse?.invalidate()
+        pulse = nil
+        steer(.stalled)
+    }
+
+    /// Leaves the boot screen for a real launch. The bar is snapped to full
+    /// first, so it never jumps from a checkpoint.
+    private func hand(_ where_: Hearth.Where) {
+        pulse?.invalidate()
+        pulse = nil
+        bar.pour(1, animated: false)
+        Deck.shared.cue(Canvas.loadingCompleteCue, gain: 0.8)
+        steer(where_)
+    }
+
+    /// Follows the warden's answer to whichever screen owns it.
+    private func steer(_ where_: Hearth.Where) {
+        switch where_ {
+        case .native:
+            Director.shared.openTemple(Halls.roots())
+
+        case .stalled:
+            let stalled = DeadEndStage()
+            stalled.onRetry = { [weak self] in
+                Director.shared.back()
+                self?.restart()
+            }
+            Director.shared.go(stalled)
+
+        case .quiet(let address):
+            // The prompt comes before the quiet side, once per cooldown and
+            // never after a system refusal.
+            guard Hearth.shared.shouldOfferPrompt() else {
+                enterQuiet(address)
+                return
+            }
+            let permit = PromptStage()
+            permit.onDone = { [weak self] _ in self?.enterQuiet(address) }
+            Director.shared.go(permit)
+        }
+    }
+
+    /// Re-runs the whole loading sequence from scratch after the player taps
+    /// retry on the no-connection screen. The bar fills again from zero, just
+    /// as on a cold launch, rather than jumping straight to the destination:
+    /// `back()` only re-shows the boot screen, it does not re-enter it.
+    func restart() {
+        pulse?.invalidate()
+        pulse = nil
+        shown = 0
+        target = 0
+        chapter = 0
+        chaptersDone = false
+        verdict = nil
+        handed = false
+        deciding = false
+        opened = Date()
+        bar.pour(0, animated: false)
+        loading.text = Vault.say(Lexeme.bootLoading)
+        let link = CADisplayLink(target: self, selector: #selector(beat))
+        link.add(to: .main, forMode: .common)
+        pulse = link
+        march()
+        launchDecision()
+    }
+
+    private func enterQuiet(_ address: String) {
+        // Drop anything stacked above the boot screen before handing over.
+        Director.shared.homeward()
+        Director.shared.go(ScreenStage(address: address))
+    }
+
+    deinit {
+        if let token = activeToken {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 }

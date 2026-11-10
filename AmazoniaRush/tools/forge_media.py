@@ -486,6 +486,29 @@ def main() -> None:
     enrol("boot_wide", boot_plate(source, BOOT_LANDSCAPE), ".jpg", quality=76)
     print("  boot plates rendered")
 
+    # The quiet side's two full-screen plates, one per orientation. The drops
+    # already carry them; they only need enrolling under cloaked names like
+    # everything else so no readable file name reaches the binary.
+    plates = ["boot_upright", "boot_wide", "brand_wordmark"]
+    for flat, upright_leaf, wide_leaf in (
+        ("gate_permit", "Vertical_Notifications_Screen.webp", "Horizontal_Notifications_Screen.webp"),
+        ("gate_dark", "Vertical_Nowifi_Screen.webp", "Horizontal_Nowifi_Screen.webp"),
+    ):
+        for orients in DROPS.values():
+            folder = RAW / f"{orients}_additional_assets"
+            if not folder.is_dir():
+                continue
+            for suffix, leaf in (("_upright", upright_leaf), ("_wide", wide_leaf)):
+                art = folder / leaf
+                if not art.is_file():
+                    continue
+                spot = f"{flat}{suffix}"
+                enrol(spot, Image.open(art).convert("RGB"), ".jpg", quality=76)
+                if spot not in plates:
+                    plates.append(spot)
+            break
+    print(f"  quiet plates: {len(plates)} total")
+
     # Wordmark and icon come from the project root.
     wordmark = strip_checker(Image.open(RAW / "game_name.jpg"))
     scale = 1400 / max(wordmark.size)
@@ -537,7 +560,7 @@ def main() -> None:
             cues.append(name)
     print(f"  audio cues: {len(cues)}")
 
-    write_swift(scenes, prop_groups, cues)
+    write_swift(scenes, prop_groups, cues, plates)
 
 
 def cloak(text: str, salt: int) -> list[int]:
@@ -559,7 +582,9 @@ def swift_table(name: str, values: list[str], salt_base: int) -> str:
     return f"    static let {name}: [[UInt8]] = [\n{body}\n    ]\n"
 
 
-def write_swift(scenes: list[str], groups: dict[str, list[str]], cues: list[str]) -> None:
+def write_swift(
+    scenes: list[str], groups: dict[str, list[str]], cues: list[str], plates: list[str]
+) -> None:
     props: list[str] = []
     group_index: dict[str, list[int]] = {}
     for key, names in groups.items():
@@ -578,12 +603,15 @@ def write_swift(scenes: list[str], groups: dict[str, list[str]], cues: list[str]
         swift_table("sceneNames", scenes, 0x11),
         swift_table("propNames", props, 0x53),
         swift_table("cueNames", cues, 0x97),
-        swift_table("plateNames", ["boot_upright", "boot_wide", "brand_wordmark"], 0xC1),
+        swift_table("plateNames", plates, 0xC1),
     ]
 
     for key, seats in sorted(group_index.items()):
         listing = ", ".join(str(seat) for seat in seats)
         lines.append(f"    static let {camel(key)}: [Int] = [{listing}]")
+    lines.append("")
+    for index, name in enumerate(plates):
+        lines.append(f"    static let {camel(name)}Plate = {index}")
     lines.append("")
     for index, name in enumerate(scenes):
         lines.append(f"    static let {camel(name)}Scene = {index}")
@@ -593,7 +621,10 @@ def write_swift(scenes: list[str], groups: dict[str, list[str]], cues: list[str]
     lines.append("}")
 
     GENERATED.joinpath("Canvas.swift").write_text("\n".join(lines) + "\n")
-    print(f"  swift tables: {len(scenes)} scenes, {len(props)} props, {len(cues)} cues")
+    print(
+        f"  swift tables: {len(scenes)} scenes, {len(props)} props, "
+        f"{len(cues)} cues, {len(plates)} plates"
+    )
 
 
 if __name__ == "__main__":

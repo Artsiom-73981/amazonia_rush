@@ -94,7 +94,7 @@ private func plaque(
 
 /// The first hall's face: the Keeper herself, how far along she is, and the
 /// line of flavour that used to float unattached above the cards.
-private func crest(art: Int, level: String, greet: String, note: String, share: Float) -> UIView {
+private func crest(art: Int, avatar: UIImage?, level: String, greet: String, note: String, share: Float) -> UIView {
     let card = Slab(.raised)
 
     // A pool of light behind her, so she is standing in the temple rather
@@ -143,6 +143,28 @@ private func crest(art: Int, level: String, greet: String, note: String, share: 
         column.topAnchor.constraint(equalTo: card.topAnchor, constant: Grid.inset),
         column.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -Grid.inset),
     ])
+
+    // When the explorer has chosen a photo, it takes the portrait slot as a
+    // round medallion over the pool; the Keeper art is kept in place (with its
+    // sizing constraints) so the card's height does not shift.
+    if let avatar {
+        figure.image = nil
+        let photo = UIImageView(image: avatar)
+        photo.contentMode = .scaleAspectFill
+        photo.clipsToBounds = true
+        photo.layer.cornerRadius = 41
+        photo.layer.cornerCurve = .continuous
+        photo.layer.borderWidth = 2
+        photo.layer.borderColor = Hide.brass.cgColor
+        photo.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(photo)
+        NSLayoutConstraint.activate([
+            photo.centerXAnchor.constraint(equalTo: pool.centerXAnchor),
+            photo.centerYAnchor.constraint(equalTo: pool.centerYAnchor),
+            photo.widthAnchor.constraint(equalToConstant: 82),
+            photo.heightAnchor.constraint(equalToConstant: 82),
+        ])
+    }
     return card
 }
 
@@ -256,16 +278,28 @@ final class HomeStage: ScrollStage {
         rebuild(sheet)
     }
 
+    @objc private func openProfile() {
+        Director.shared.go(ProfileStage())
+    }
+
     private func rebuild(_ sheet: HubView) {
         clear()
 
-        add(crest(
+        let face = crest(
             art: Canvas.bKeeper[0],
+            avatar: Keepsake.current,
             level: Vault.say(Lexeme.homeLevel) + "  \(sheet.attunement)",
             greet: Vault.say(sheet.greet),
             note: Vault.say(Lexeme.homeLevelBlurb),
             share: sheet.lightShare
-        ))
+        )
+        // Tapping the portrait opens the profile screen, so the photo can be set
+        // or changed straight from the home hall.
+        face.isUserInteractionEnabled = true
+        face.addGestureRecognizer(
+            UITapGestureRecognizer(target: self, action: #selector(openProfile))
+        )
+        add(face)
 
         // A run already underway outranks everything: it is the only card
         // with the gold button until it is finished or abandoned.
@@ -507,6 +541,10 @@ final class MoreStage: ScrollStage {
         hoard.show(sheet.purse)
         clear()
         add(door(
+            Lexeme.profileTitle, Lexeme.profileBlurb,
+            art: Canvas.bKeeper[0]
+        ) { Director.shared.go(ProfileStage()) })
+        add(door(
             Lexeme.setTitle, Lexeme.tabMoreBlurb,
             art: Canvas.bTempleMechanisms[0]
         ) { Director.shared.go(SettingsStage()) })
@@ -536,6 +574,228 @@ final class MoreStage: ScrollStage {
     }
 }
 
+// --- the explorer's own face -----------------------------------------------
+
+/// Where the explorer's chosen photo lives. The picture never leaves the
+/// phone: it is written into the app's own Documents folder and read back from
+/// there, so nothing is uploaded and nothing is declared as collected.
+enum Keepsake {
+    private static var cached: UIImage?
+    private static var loaded = false
+
+    private static var spot: URL? {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)
+            .first?
+            .appendingPathComponent("explorer.jpg")
+    }
+
+    /// The saved photo, or nil when the explorer has not chosen one.
+    static var current: UIImage? {
+        if loaded { return cached }
+        loaded = true
+        if let spot, let data = try? Data(contentsOf: spot) {
+            cached = UIImage(data: data)
+        }
+        return cached
+    }
+
+    @discardableResult
+    static func keep(_ image: UIImage) -> Bool {
+        guard let spot, let data = image.jpegData(compressionQuality: 0.85) else { return false }
+        guard (try? data.write(to: spot, options: .atomic)) != nil else { return false }
+        cached = image
+        loaded = true
+        return true
+    }
+
+    static func drop() {
+        if let spot { try? FileManager.default.removeItem(at: spot) }
+        cached = nil
+        loaded = true
+    }
+
+    /// Shrinks a capture to a thumbnail: a profile face never needs the full
+    /// resolution a camera hands back, and a small file saves instantly.
+    static func fit(_ image: UIImage, max side: CGFloat) -> UIImage {
+        let longest = Swift.max(image.size.width, image.size.height)
+        guard longest > side, longest > 0 else { return image }
+        let scale = side / longest
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+/// Lets the explorer attach a photo to their profile. This is the one screen in
+/// the game that touches the camera and the photo library (through
+/// `UIImagePickerController`), which is exactly what the two matching
+/// Info.plist purpose strings are declared for.
+final class ProfileStage: ScrollStage {
+    override var titleLexeme: UInt16? { Lexeme.profileTitle }
+    override var sceneWish: Int? { Canvas.aBgRoom2Scene }
+    override var wantsPurse: Bool { false }
+
+    override func awaken() {
+        paint()
+    }
+
+    private func paint() {
+        clear()
+
+        let photo = Keepsake.current
+
+        // The round portrait: the chosen photo, or a quiet placeholder line.
+        let ring = Slab(.raised)
+        ring.translatesAutoresizingMaskIntoConstraints = false
+        let face = UIImageView()
+        face.contentMode = .scaleAspectFill
+        face.clipsToBounds = true
+        face.backgroundColor = Hide.loam
+        face.image = photo
+        face.layer.cornerRadius = 74
+        face.layer.cornerCurve = .continuous
+        face.layer.borderWidth = 2
+        face.layer.borderColor = Hide.brass.cgColor
+        face.translatesAutoresizingMaskIntoConstraints = false
+        ring.addSubview(face)
+
+        let empty = chisel(Vault.say(Lexeme.profileEmpty), Scribe.plain(12), Hide.hush, align: .center)
+        empty.isHidden = photo != nil
+        empty.translatesAutoresizingMaskIntoConstraints = false
+        ring.addSubview(empty)
+
+        let holder = UIView()
+        holder.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(ring)
+        NSLayoutConstraint.activate([
+            ring.topAnchor.constraint(equalTo: holder.topAnchor, constant: 8),
+            ring.bottomAnchor.constraint(equalTo: holder.bottomAnchor, constant: -8),
+            ring.centerXAnchor.constraint(equalTo: holder.centerXAnchor),
+            ring.widthAnchor.constraint(equalToConstant: 168),
+            ring.heightAnchor.constraint(equalToConstant: 168),
+            face.topAnchor.constraint(equalTo: ring.topAnchor, constant: 10),
+            face.leadingAnchor.constraint(equalTo: ring.leadingAnchor, constant: 10),
+            face.trailingAnchor.constraint(equalTo: ring.trailingAnchor, constant: -10),
+            face.bottomAnchor.constraint(equalTo: ring.bottomAnchor, constant: -10),
+            empty.centerXAnchor.constraint(equalTo: face.centerXAnchor),
+            empty.centerYAnchor.constraint(equalTo: face.centerYAnchor),
+            empty.leadingAnchor.constraint(greaterThanOrEqualTo: face.leadingAnchor, constant: 8),
+            empty.trailingAnchor.constraint(lessThanOrEqualTo: face.trailingAnchor, constant: -8),
+        ])
+        add(holder)
+
+        add(chisel(Vault.say(Lexeme.profileBlurb), Scribe.plain(12), Hide.murmur, lines: 0, align: .center))
+
+        let has = photo != nil
+        add(Ledge(
+            title: Vault.say(has ? Lexeme.profileChange : Lexeme.profileAdd),
+            cast: .lit,
+            deed: Vault.say(Lexeme.navNext),
+            fire: { [weak self] in self?.offerSources() }
+        ))
+        if has {
+            add(Ledge(
+                title: Vault.say(Lexeme.profileRemove),
+                cast: .warn,
+                deed: Vault.say(Lexeme.navConfirm),
+                deedBuild: .danger,
+                fire: { [weak self] in self?.drop() }
+            ))
+        }
+    }
+
+    /// A hand-built chooser, matching the game's own dialog language, before the
+    /// system photo/camera picker is raised.
+    private func offerSources() {
+        let sheet = UIView()
+        sheet.backgroundColor = Hide.pitch.withAlphaComponent(0.88)
+        sheet.alpha = 0
+        sheet.pin(into: view)
+
+        let card = Slab(.raised)
+        card.translatesAutoresizingMaskIntoConstraints = false
+        sheet.addSubview(card)
+
+        let cam = PressPad(.gold)
+        cam.dress(Vault.say(Lexeme.profileCamera))
+        cam.isEnabled = UIImagePickerController.isSourceTypeAvailable(.camera)
+        let lib = PressPad(.stone)
+        lib.dress(Vault.say(Lexeme.profileLibrary))
+        let nope = PressPad(.ghost)
+        nope.dress(Vault.say(Lexeme.navBack))
+        let column = UIStackView(arrangedSubviews: [cam, lib, nope])
+        column.axis = .vertical
+        column.spacing = 12
+        column.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(column)
+
+        NSLayoutConstraint.activate([
+            card.leadingAnchor.constraint(equalTo: sheet.leadingAnchor, constant: 24),
+            card.trailingAnchor.constraint(equalTo: sheet.trailingAnchor, constant: -24),
+            card.centerYAnchor.constraint(equalTo: sheet.centerYAnchor),
+            column.topAnchor.constraint(equalTo: card.topAnchor, constant: 18),
+            column.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 18),
+            column.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -18),
+            column.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -18),
+            cam.heightAnchor.constraint(equalToConstant: 46),
+            lib.heightAnchor.constraint(equalToConstant: 46),
+            nope.heightAnchor.constraint(equalToConstant: 40),
+        ])
+
+        func close(_ then: (() -> Void)? = nil) {
+            UIView.animate(withDuration: 0.18, animations: { sheet.alpha = 0 }) { _ in
+                sheet.removeFromSuperview()
+                then?()
+            }
+        }
+        cam.onPress = { close { [weak self] in self?.pick(from: .camera) } }
+        lib.onPress = { close { [weak self] in self?.pick(from: .photoLibrary) } }
+        nope.onPress = { close() }
+        UIView.animate(withDuration: 0.22) { sheet.alpha = 1 }
+        Deck.shared.cue(Canvas.popupOpenCue, gain: 0.7)
+    }
+
+    private func pick(from source: UIImagePickerController.SourceType) {
+        guard UIImagePickerController.isSourceTypeAvailable(source) else {
+            whisper(Vault.say(Lexeme.webFailTitle), sour: true)
+            return
+        }
+        let picker = UIImagePickerController()
+        picker.sourceType = source
+        picker.allowsEditing = true
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    private func drop() {
+        Keepsake.drop()
+        Deck.shared.cue(Canvas.windowCloseCue, gain: 0.6)
+        paint()
+    }
+}
+
+extension ProfileStage: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    func imagePickerController(
+        _ picker: UIImagePickerController,
+        didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+    ) {
+        let chosen = (info[.editedImage] as? UIImage) ?? (info[.originalImage] as? UIImage)
+        picker.dismiss(animated: true) { [weak self] in
+            guard let self, let chosen else { return }
+            Keepsake.keep(Keepsake.fit(chosen, max: 512))
+            Deck.shared.cue(Canvas.confirmCue, gain: 0.7)
+            Tremor.cheer()
+            self.paint()
+        }
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
+    }
+}
+
 #if DEBUG
 /// Drives the app from launch arguments so screens can be inspected on a
 /// headless simulator. Debug builds only; the shipped game has no such door.
@@ -545,6 +805,10 @@ enum Tour {
         guard let seat = value(for: "--hall"), let index = Int(seat) else { return nil }
         return max(0, min(4, index))
     }
+
+    /// `--gate permit` or `--gate nowifi` raises one of the
+    /// quiet screens straight from boot, bypassing the decision entirely.
+    static var gate: String? { value(for: "--gate") }
 
     /// `--open map` or `--open run` pushes one more screen on top.
     static func walk() {
@@ -586,6 +850,10 @@ enum Tour {
             case "bestiary": Director.shared.go(CodexStage(.breeds))
             case "settings": Director.shared.go(SettingsStage())
             case "privacy": Director.shared.go(WebStage(Lexeme.uiPrivacy, Lexeme.appPrivacy))
+            // The quiet side screens, so they can be checked without a
+            // backend and without spending the one real notification prompt.
+            case "permit": Director.shared.go(PromptStage())
+            case "nowifi": Director.shared.go(DeadEndStage())
             default: break
             }
         }

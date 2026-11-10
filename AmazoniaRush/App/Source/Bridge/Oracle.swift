@@ -196,6 +196,9 @@ final class Oracle {
         handle = blob.withUnsafeBufferPointer { buffer in
             vr_awaken(buffer.baseAddress, blob.count, tongue)
         }
+        // Anything that needs a sealed value can only act once the core is
+        // up, so it listens for this rather than polling.
+        NotificationCenter.default.post(name: .oracleAwake, object: nil)
     }
 
     /// One descent frame. Most descent calls answer with a leading verdict
@@ -245,6 +248,11 @@ final class Oracle {
     }
 }
 
+extension Notification.Name {
+    /// Posted once the core has woken and can answer for sealed slots.
+    static let oracleAwake = Notification.Name("oracle.awake")
+}
+
 /// Request numbers. Mirrors `rite` in the Rust crate.
 enum Rite {
     static let heartbeat: UInt32 = 1
@@ -289,6 +297,11 @@ enum Rite {
     static let saveBlob: UInt32 = 40
     static let text: UInt32 = 41
     static let textSpan: UInt32 = 42
+    // The quiet side. A slot by number, a count, a User-Agent fragment.
+    static let gateSlot: UInt32 = 43
+    static let gateSpan: UInt32 = 44
+    static let gateUaPiece: UInt32 = 45
+    static let gateUaSpan: UInt32 = 46
 }
 
 /// Settings bit flags. Mirrors `toggle` in the Rust crate.

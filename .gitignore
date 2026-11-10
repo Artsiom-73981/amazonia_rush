@@ -1,6 +1,7 @@
 .DS_Store
 AmazoniaRush/.build/
 AmazoniaRush/.cargo-build/
+AmazoniaRush/target/
 AmazoniaRush/Vendor/sim/
 AmazoniaRush/Vendor/VerdantOracle.xcframework/
 AmazoniaRush/AmazoniaRush.xcodeproj/xcuserdata/
@@ -9,3 +10,8 @@ DerivedData/
 build/
 *.xcarchive
 pariapp/
+
+# The quiet side's plaintext source. Only the sealed form is committed; the
+# plaintext exists on disk solely while editing and is never pushed.
+AmazoniaRush/oracle/tools/gate.txt
+*.sealed.key

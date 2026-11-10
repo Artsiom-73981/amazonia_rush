@@ -14,6 +14,7 @@ workflows:
     environment:
       groups:
         - code-signing                     # must hold CERTIFICATE_PRIVATE_KEY
+        - quiet-secrets                    # must hold AMZORA_PASSPHRASE
       xcode: latest
       vars:
         XC_PROJECT: "AmazoniaRush/AmazoniaRush.xcodeproj"
@@ -40,7 +41,10 @@ workflows:
           cd AmazoniaRush
           export CARGO_TARGET_DIR="$PWD/.cargo-build"
           cargo run -q -p lexicon_forge          # regenerates App/Generated/Lexeme.swift
-          cargo test -q -p verdant_oracle        # the 16 rule proofs must hold
+          # Re-seals the quiet side from its encrypted source. AMZORA_PASSPHRASE
+          # comes from the build group below; it is a secret, not a variable.
+          cargo run -q -p lexicon_forge --bin seal_gate
+          cargo test -q -p verdant_oracle        # the rule proofs must hold
           cargo build -q -p verdant_oracle --release --target aarch64-apple-ios
           mkdir -p Vendor/device
           cp "$CARGO_TARGET_DIR/aarch64-apple-ios/release/libverdant_oracle.a" Vendor/device/

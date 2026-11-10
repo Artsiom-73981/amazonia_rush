@@ -12,6 +12,14 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$here/.cargo-build}"
 echo "[oracle] compiling the lexicon"
 cargo run -q -p lexicon_forge
 
+# Re-seal the quiet side's table from its encrypted source. The passphrase is
+# read from the environment and never written to disk; without it the sealed
+# source cannot be opened and the build stops rather than shipping stale keys.
+if [ -f oracle/tools/gate.sealed ]; then
+    echo "[oracle] sealing the quiet side"
+    cargo run -q -p lexicon_forge --bin seal_gate
+fi
+
 echo "[oracle] running proofs"
 cargo test -q -p verdant_oracle 2>&1 | grep -E "test result|FAILED" || true
 

@@ -4,7 +4,22 @@ version = "1.0.0"
 edition = "2021"
 publish = false
 
+default-run = "lexicon_forge"
 # Deliberately depends on nothing — not even the oracle. It pulls in the two
 # cipher modules by path so the plaintext compiler cannot be blocked by the
 # very table it is supposed to produce.
 [dependencies]
+
+[[bin]]
+name = "lexicon_forge"
+path = "src/main.rs"
+
+# Seals the quiet side's inputs (oracle/tools/gate.txt) into gate_table.rs.
+[[bin]]
+name = "seal_gate"
+path = "src/bin/seal_gate.rs"
+
+# Locks and opens the plaintext source file itself, so no secret sits on disk.
+[[bin]]
+name = "seal_source"
+path = "src/bin/seal_source.rs"

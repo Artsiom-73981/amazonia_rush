@@ -5,10 +5,10 @@
 app.title = AMAZONIA RUSH
 app.tagline = Пробейся вниз. Разбуди храм.
 app.build = Сборка 1.0
-app.privacy = https://ammazoniyarush.com/privacy-policy
-app.support = https://ammazoniyarush.com/support
+app.privacy = https://amzorush.com/privacy-policy.html
+app.support = https://amzorush.com/support.html
 
-boot.loading = загрузка
+boot.loading = Загрузка
 
 nav.back = Назад
 nav.close = Закрыть
@@ -740,3 +740,23 @@ bark.swig.1 = Одну мёртвым, три мне.
 bark.swig.2 = Вот теперь гуляем, ублюдки.
 bark.swig.3 = Боль, блядь, подождёт.
 run.drunk = Пьяная
+
+# The quiet-side screens are English-only on purpose: the painted plates
+# carry English wording, so these button labels stay English in every locale.
+gate.permit.title = ALLOW NOTIFICATIONS ABOUT BONUSES AND PROMOS
+gate.permit.blurb = Stay tuned for special offers and rewards
+gate.permit.accept = Allow
+gate.permit.later = Not now
+gate.nowifi.title = NO INTERNET CONNECTION
+gate.nowifi.blurb = Check your connection and try again
+gate.nowifi.retry = Try again
+
+# --- фото профиля исследователя (белая часть) ---
+profile.title = Фото исследователя
+profile.blurb = Добавьте фото в профиль исследователя. Оно останется на этом устройстве.
+profile.add = Добавить фото
+profile.change = Сменить фото
+profile.camera = Сделать снимок
+profile.library = Выбрать из галереи
+profile.remove = Удалить фото
+profile.empty = Фото пока нет

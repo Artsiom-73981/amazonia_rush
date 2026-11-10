@@ -29,12 +29,23 @@ final class WebStage: Stage, WKNavigationDelegate {
     override func assemble() {
         let plan = WKWebViewConfiguration()
         plan.allowsInlineMediaPlayback = true
+        // These are plain legal/support pages written as dark text with no
+        // background of their own; drawn over the game's dark chrome they are
+        // unreadable. Force a white page so the text reads as black on white.
+        let paper = WKUserScript(
+            source: "var s=document.createElement('style');"
+                + "s.textContent='html,body{background:#ffffff!important;}';"
+                + "(document.head||document.documentElement).appendChild(s);",
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        )
+        plan.userContentController.addUserScript(paper)
         pane = WKWebView(frame: .zero, configuration: plan)
         pane.navigationDelegate = self
-        pane.isOpaque = false
-        pane.backgroundColor = .clear
-        pane.scrollView.backgroundColor = Hide.pitch
-        pane.scrollView.indicatorStyle = .white
+        pane.isOpaque = true
+        pane.backgroundColor = .white
+        pane.scrollView.backgroundColor = .white
+        pane.scrollView.indicatorStyle = .default
         pane.layer.cornerRadius = Grid.corner
         pane.layer.cornerCurve = .continuous
         pane.clipsToBounds = true

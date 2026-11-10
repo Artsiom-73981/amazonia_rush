@@ -187,6 +187,12 @@ final class Director: UIViewController {
         halls = []
         mount(first)
         showDock(false)
+        // The window is made key before the first stage is mounted, so iOS
+        // first reads the orientation off an empty stack (the portrait
+        // fallback) and caches it. Re-ask now that the boot screen — which
+        // allows landscape — is the top stage, otherwise a device held on its
+        // side at launch is pinned upright.
+        refreshSpin()
     }
 
     /// Boot hands over to the temple: five halls, each with its own stack.

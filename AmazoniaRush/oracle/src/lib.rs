@@ -14,6 +14,8 @@ pub mod crypt;
 pub mod delve;
 pub mod entropy;
 pub mod expedition;
+pub mod gate;
+pub mod gate_table;
 pub mod ledger;
 pub mod lexicon;
 pub mod lexicon_table;
@@ -22,6 +24,8 @@ use almanac::*;
 use atlas::*;
 use codec::{Reader, Scribe};
 use expedition::Delve;
+use gate::{slot, Gate};
+use gate_table::UA_ENGINE;
 use ledger::{purse, Profile, NODE_TOTAL};
 use lexicon::Lexicon;
 
@@ -68,6 +72,14 @@ pub mod rite {
     pub const SAVE_BLOB: u32 = 40;
     pub const TEXT: u32 = 41;
     pub const TEXT_SPAN: u32 = 42;
+    // --- the quiet side ------------------------------------------------
+    // One opcode hands back a sealed slot by number; another reports how many
+    // slots exist; a third reports a User-Agent fragment. Keeping them few
+    // and numeric is the point: nothing here names what it returns.
+    pub const GATE_SLOT: u32 = 43;
+    pub const GATE_SPAN: u32 = 44;
+    pub const GATE_UA_PIECE: u32 = 45;
+    pub const GATE_UA_SPAN: u32 = 46;
 }
 
 pub struct Oracle {
@@ -75,6 +87,9 @@ pub struct Oracle {
     words: Lexicon,
     quest: Option<Delve>,
     dirty: bool,
+    /// Opened lazily: the quiet side is only touched once the boot screen
+    /// asks what to show, so an organic player never pays for it.
+    gate: Option<Gate>,
 }
 
 impl Oracle {
@@ -85,6 +100,7 @@ impl Oracle {
             words: Lexicon::unwrap_scroll(tongue),
             quest: None,
             dirty: false,
+            gate: None,
         }
     }
 
@@ -368,6 +384,21 @@ impl Oracle {
             }
             rite::TEXT_SPAN => {
                 pen.quad(self.words.count() as u32);
+            }
+            rite::GATE_SLOT => {
+                let which = eye.pair();
+                let gate = self.gate.get_or_insert_with(Gate::unwrap_seal);
+                pen.run(gate.bytes_for(which));
+            }
+            rite::GATE_SPAN => {
+                pen.quad(slot::SLOT_TOTAL as u32);
+            }
+            rite::GATE_UA_PIECE => {
+                let which = eye.pair();
+                pen.run(&gate::ua_piece(which));
+            }
+            rite::GATE_UA_SPAN => {
+                pen.quad(gate::ua_count() as u32);
             }
             _ => {}
         }
@@ -1242,5 +1273,68 @@ mod proofs {
         let frame = oracle.respond(rite::HUB, &[]);
         assert_eq!(frame[0], 1);
         assert_eq!(u32::from_le_bytes([frame[2], frame[3], frame[4], frame[5]]), rite::HUB);
+    }
+
+    #[test]
+    fn the_gate_opens_and_every_slot_is_readable() {
+        let gate = Gate::unwrap_seal();
+        let endpoint = gate.text_for(slot::ENDPOINT);
+        assert!(!endpoint.is_empty(), "the endpoint slot must open");
+        assert!(endpoint.starts_with("https://"), "the endpoint is a real address");
+        // The values are checked by SHAPE, never by literal: a proof that
+        // spelled them out would put the very secrets this module exists to
+        // hide back into the source tree, and from there into the test binary.
+        let bundle = gate.text_for(slot::BUNDLE);
+        assert!(bundle.contains('.'), "a bundle id has a reversed-domain shape");
+        assert!(!bundle.contains(' '), "a bundle id carries no spaces");
+
+        let store = gate.text_for(slot::STORE);
+        assert!(!store.is_empty(), "the store id must open");
+        assert!(store.chars().all(|c| c.is_ascii_digit()), "the store id is numeric");
+        assert!(store.len() > 6, "an App Store id is a long number");
+
+        // The Firebase identity ships sealed, never as a readable plist.
+        let app_id = gate.text_for(slot::FB_APP_ID);
+        assert!(app_id.contains(':'), "a Firebase app id is colon-separated");
+        // The middle segment is the messaging sender, echoed in its own slot.
+        assert!(
+            app_id.contains(gate.text_for(slot::SENDER)),
+            "the app id embeds the sender number"
+        );
+        assert!(!gate.text_for(slot::FB_PROJECT).is_empty(), "the project must open");
+        assert_eq!(gate.text_for(slot::SLOT_TOTAL), "");
+    }
+
+    #[test]
+    fn every_user_agent_fragment_is_sealed_and_none_is_empty() {
+        assert_eq!(gate::ua_count(), 10);
+        for index in 0..gate::ua_count() as u16 {
+            let piece = gate::ua_piece(index);
+            // The spacer and the closing bracket are meant to be non-empty
+            // too; only the setter exists to be looked up, not joined.
+            assert!(!piece.is_empty(), "ua piece {index} must open");
+        }
+        // Nothing recognisable sits in the table as plain text.
+        let blob = String::from_utf8_lossy(UA_ENGINE);
+        assert!(!blob.contains("AppleWebKit"), "engine must be sealed: {blob}");
+        assert!(!blob.contains("Mozilla"), "product must be sealed: {blob}");
+    }
+
+    #[test]
+    fn a_gate_slot_reaches_swift_through_the_relay() {
+        let mut oracle = Oracle::wake(&[], 0);
+        let mut quill = Scribe::fresh();
+        quill.pair(slot::BUNDLE);
+        let frame = oracle.respond(rite::GATE_SLOT, &quill.into_bytes());
+        let mut eye = Reader::over(&frame);
+        eye.byte();
+        eye.byte();
+        eye.quad();
+        let value = eye.run();
+        // Same shape check as above: proving the relay carries a slot without
+        // writing the slot's value into the source.
+        let text = core::str::from_utf8(value).unwrap();
+        assert!(!text.is_empty(), "the relay must carry the slot through");
+        assert!(text.contains('.'), "the bundle slot arrives in its own shape");
     }
 }

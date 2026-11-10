@@ -24,6 +24,12 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Amazonia Rush uses the camera so you can take a photo for your explorer profile.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Amazonia Rush accesses your photo library so you can choose a picture for your explorer profile.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Amazonia Rush uses your data to tailor in-game rewards and offers to you.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -33,6 +39,10 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

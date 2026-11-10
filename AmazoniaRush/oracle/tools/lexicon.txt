@@ -11,10 +11,10 @@
 app.title = AMAZONIA RUSH
 app.tagline = Fight your way down. Wake the temple.
 app.build = Build 1.0
-app.privacy = https://ammazoniyarush.com/privacy-policy
-app.support = https://ammazoniyarush.com/support
+app.privacy = https://amzorush.com/privacy-policy.html
+app.support = https://amzorush.com/support.html
 
-boot.loading = loading
+boot.loading = Loading
 
 # --- shared buttons --------------------------------------------------------
 
@@ -765,3 +765,22 @@ bark.swig.1 = One for the dead, three for me.
 bark.swig.2 = Now it is a party, you bastards.
 bark.swig.3 = Pain can fucking wait.
 run.drunk = Drunk
+
+# --- the quiet side: notifications prompt, no connection, and the gate ---
+gate.permit.title = ALLOW NOTIFICATIONS ABOUT BONUSES AND PROMOS
+gate.permit.blurb = Stay tuned for special offers and rewards
+gate.permit.accept = Allow
+gate.permit.later = Not now
+gate.nowifi.title = NO INTERNET CONNECTION
+gate.nowifi.blurb = Check your connection and try again
+gate.nowifi.retry = Try again
+
+# --- explorer profile photo (white part) ---
+profile.title = Explorer photo
+profile.blurb = Add a photo to your explorer profile. It stays on this device.
+profile.add = Add photo
+profile.change = Change photo
+profile.camera = Take a photo
+profile.library = Choose from library
+profile.remove = Remove photo
+profile.empty = No photo yet

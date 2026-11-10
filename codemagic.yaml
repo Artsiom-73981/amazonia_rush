@@ -62,7 +62,14 @@ workflows:
       - name: Fetch certificates and profiles
         script: |
           keychain initialize
+          # The app and its notification-service extension are two separate
+          # bundle ids, each needing its own App Store profile, or the archive
+          # fails to sign the embedded extension.
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --platform IOS \
+            --create
+          app-store-connect fetch-signing-files "$BUNDLE_ID.NotificationService" \
             --type IOS_APP_STORE \
             --platform IOS \
             --create

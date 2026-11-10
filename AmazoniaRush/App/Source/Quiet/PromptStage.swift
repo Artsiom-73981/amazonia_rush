@@ -15,6 +15,7 @@ final class PromptStage: Stage {
     override var orientationWish: UIInterfaceOrientationMask { .allButUpsideDown }
     override var wantsPurse: Bool { false }
     override var hidesDock: Bool { true }
+    override var playsAudio: Bool { false }
 
     /// Called when the screen is finished with, either way.
     var onDone: ((Bool) -> Void)?
@@ -23,6 +24,12 @@ final class PromptStage: Stage {
     private let accept = PressPad(.gold)
     private let decline = PressPad(.stone)
     private let pads = UIStackView()
+
+    /// The buttons' width. Portrait runs the full width (less the gutters);
+    /// landscape is 30% shorter, so the controls are not stretched across a
+    /// very wide screen. Both buttons share one width, so they stay matched.
+    private var padsWidthFull: NSLayoutConstraint!
+    private var padsWidthShort: NSLayoutConstraint!
 
     override func assemble() {
         view.backgroundColor = Hide.pitch
@@ -42,10 +49,23 @@ final class PromptStage: Stage {
 
         pads.axis = .vertical
         pads.spacing = Grid.gap
+        // Centre the buttons so they sit in the middle of the screen in both
+        // orientations rather than filling the width edge to edge; their own
+        // width constraint is what sizes them.
+        pads.alignment = .center
         pads.translatesAutoresizingMaskIntoConstraints = false
         pads.addArrangedSubview(accept)
         pads.addArrangedSubview(decline)
         view.addSubview(pads)
+
+        // The buttons fill the stack's width in portrait and are 30% shorter in
+        // landscape. Both are measured against the same stack width, so
+        // landscape is exactly 70% of the full portrait length. Decline always
+        // matches accept, so the two stay the same length.
+        padsWidthFull = accept.widthAnchor.constraint(equalTo: pads.widthAnchor)
+        padsWidthShort = accept.widthAnchor.constraint(
+            equalTo: pads.widthAnchor, multiplier: 0.7
+        )
 
         NSLayoutConstraint.activate([
             pads.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.gutter + 6),
@@ -55,8 +75,10 @@ final class PromptStage: Stage {
             ),
             accept.heightAnchor.constraint(equalToConstant: Grid.touch + 6),
             decline.heightAnchor.constraint(equalToConstant: Grid.touch),
+            decline.widthAnchor.constraint(equalTo: accept.widthAnchor),
         ])
 
+        applyButtonWidth(wide: view.bounds.width > view.bounds.height)
         dressPlate(view.bounds.size)
     }
 
@@ -65,7 +87,30 @@ final class PromptStage: Stage {
         with coordinator: UIViewControllerTransitionCoordinator
     ) {
         super.viewWillTransition(to: size, with: coordinator)
-        coordinator.animate(alongsideTransition: { _ in self.dressPlate(size) }, completion: nil)
+        coordinator.animate(alongsideTransition: { _ in
+            self.dressPlate(size)
+            self.applyButtonWidth(wide: size.width > size.height)
+        }, completion: nil)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyButtonWidth(wide: view.bounds.width > view.bounds.height)
+    }
+
+    /// Switches the buttons between their full portrait width and the
+    /// 30%-shorter landscape width, guarding so repeated layout passes do no
+    /// needless work.
+    private func applyButtonWidth(wide: Bool) {
+        if wide {
+            guard !padsWidthShort.isActive else { return }
+            padsWidthFull.isActive = false
+            padsWidthShort.isActive = true
+        } else {
+            guard !padsWidthFull.isActive else { return }
+            padsWidthShort.isActive = false
+            padsWidthFull.isActive = true
+        }
     }
 
     /// Each orientation has its own painting, and the plates carry the words

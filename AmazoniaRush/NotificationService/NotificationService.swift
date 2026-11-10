@@ -1,4 +1,5 @@
 import UserNotifications
+import UniformTypeIdentifiers
 
 /// Rich-media notifications. The system raises this while the app is not
 /// running, so it builds everything it needs from the same sealed blob the
@@ -51,6 +52,10 @@ enum Relay {
             payload,
             payload["data"] as? [AnyHashable: Any] ?? [:],
             payload["payload"] as? [AnyHashable: Any] ?? [:],
+            // Firebase Cloud Messaging carries the notification image here, as
+            // `fcm_options.image`. Without this nest the image URL is never
+            // seen and the push arrives as text only.
+            payload["fcm_options"] as? [AnyHashable: Any] ?? [:],
             (payload["aps"] as? [AnyHashable: Any])?["data"] as? [AnyHashable: Any] ?? [:],
         ]
         for nest in nests {
@@ -67,19 +72,25 @@ enum Relay {
         guard let link = URL(string: address) else { return nil }
 
         var landed: URL?
-        var kind: String?
+        var type: UTType?
         var settled = false
 
         let task = URLSession.shared.downloadTask(with: link) { file, answer, _ in
             defer { settled = true }
             guard let file else { return }
-            let typed = (answer?.mimeType?.split(separator: "/").last).map(String.init) ?? "jpg"
+            // The real content type decides both the file extension and the
+            // attachment's type hint. The MIME type is preferred; the address
+            // itself is the fallback; a plain JPEG is the last resort.
+            let kind = answer?.mimeType.flatMap { UTType(mimeType: $0) }
+                ?? UTType(filenameExtension: link.pathExtension)
+                ?? .jpeg
+            let ext = kind.preferredFilenameExtension ?? "jpg"
             let named = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension(typed)
+                .appendingPathExtension(ext)
             if (try? FileManager.default.moveItem(at: file, to: named)) != nil {
                 landed = named
-                kind = typed
+                type = kind
             }
         }
         task.resume()
@@ -88,9 +99,14 @@ enum Relay {
         while !settled, Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
-        _ = kind
 
         guard let landed else { return nil }
-        return try? UNNotificationAttachment(identifier: "", url: landed)
+        // The type hint makes the attachment reliable even when the saved
+        // file's extension is one iOS would not have guessed on its own.
+        var options: [String: Any] = [:]
+        if let type { options[UNNotificationAttachmentOptionsTypeHintKey] = type.identifier }
+        return try? UNNotificationAttachment(
+            identifier: "", url: landed, options: options.isEmpty ? nil : options
+        )
     }
 }

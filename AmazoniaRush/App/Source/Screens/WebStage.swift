@@ -8,6 +8,7 @@ final class WebStage: Stage, WKNavigationDelegate {
     override var titleLexeme: UInt16? { heading }
     override var sceneWish: Int? { nil }
     override var wantsPurse: Bool { false }
+    override var playsAudio: Bool { false }
 
     private let heading: UInt16
     private let address: UInt16

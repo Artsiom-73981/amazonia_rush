@@ -16,6 +16,11 @@ class Stage: UIViewController {
     var wantsPurse: Bool { true }
     /// A screen that owns the whole display: boot, the battle, a web page.
     var hidesDock: Bool { false }
+    /// Whether this screen makes any sound — both the short cues and the
+    /// ambient music bed. Only the native game does; the loading screen and the
+    /// quiet side (webview, the notification prompt, the no-connection screen)
+    /// override this to stay completely silent.
+    var playsAudio: Bool { true }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -192,6 +197,9 @@ final class Director: UIViewController {
         // fallback) and caches it. Re-ask now that the boot screen — which
         // allows landscape — is the top stage, otherwise a device held on its
         // side at launch is pinned upright.
+        // The first screen is the loading screen, which is silent, so make sure
+        // no bed is running under it.
+        syncAudio()
         refreshSpin()
     }
 
@@ -213,6 +221,9 @@ final class Director: UIViewController {
         }, completion: { _ in
             for old in leaving { self.dismount(old) }
         })
+        // The temple is the native game: its music bed lifts now (if the player
+        // has it on), having stayed silent through the whole loading screen.
+        syncAudio()
         refreshSpin()
     }
 
@@ -305,6 +316,24 @@ final class Director: UIViewController {
 
     var crown: Stage? { stack.last }
 
+    /// Whether the screen currently on top makes sound. Consulted by the audio
+    /// deck so neither a cue nor the music bed ever plays over the loading
+    /// screen or the quiet side. The stack's top is always updated before a
+    /// transition fires, so reading it here is accurate.
+    var audioAllowed: Bool { crown?.playsAudio ?? true }
+
+    /// Keeps the music bed in step with the screen on top: the native game
+    /// carries its ambient bed, while the loading screen and the quiet side are
+    /// silent. Cues are gated the same way inside `Deck.cue`. Called after every
+    /// transition and whenever the app returns to the foreground.
+    func syncAudio() {
+        if audioAllowed {
+            Deck.shared.liftBed()
+        } else {
+            Deck.shared.dropBed()
+        }
+    }
+
     /// Puts a dot on the daily tab when a reward is sitting there.
     func markDaily(_ ready: Bool) {
         dock.flag(daily: ready)
@@ -313,6 +342,9 @@ final class Director: UIViewController {
     private func dressDock(for stage: Stage) {
         showDock(!stage.hidesDock)
         dock.light(hall)
+        // The screen on top has changed, so bring the music bed into step with
+        // it: playing in the native game, silent on the quiet side.
+        syncAudio()
     }
 
     private func showDock(_ wanted: Bool) {

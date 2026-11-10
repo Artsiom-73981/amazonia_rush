@@ -138,7 +138,9 @@ final class Vestibule: UIResponder, UIWindowSceneDelegate {
         _ = Oracle.shared.heartbeat()
         Oracle.shared.preserve()
         Director.shared.crown?.awaken()
-        Deck.shared.liftBed()
+        // Resume the bed only if the screen on top is the native game; on the
+        // loading screen or the quiet side this stays silent.
+        Director.shared.syncAudio()
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

@@ -12,6 +12,7 @@ final class DeadEndStage: Stage {
     override var orientationWish: UIInterfaceOrientationMask { .allButUpsideDown }
     override var wantsPurse: Bool { false }
     override var hidesDock: Bool { true }
+    override var playsAudio: Bool { false }
 
     /// Called when the player wants another attempt.
     var onRetry: (() -> Void)?
@@ -20,6 +21,15 @@ final class DeadEndStage: Stage {
     private let retry = PressPad(.gold)
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var strip: UIStackView!
+
+    /// The retry button's width. Portrait runs the full width (less the room
+    /// the spinner needs beside it); landscape is 30% shorter, so one control
+    /// is not stretched across a very wide screen.
+    private var retryWidthFull: NSLayoutConstraint!
+    private var retryWidthShort: NSLayoutConstraint!
+    /// Room kept to the right of the button for the spinner (its width plus the
+    /// gap), so the two never overlap in either width.
+    private static let spinnerReserve: CGFloat = Grid.gap + 20
 
     override func assemble() {
         view.backgroundColor = Hide.pitch
@@ -46,8 +56,23 @@ final class DeadEndStage: Stage {
 
         strip = UIStackView(arrangedSubviews: [row])
         strip.axis = .vertical
+        // Hug the row to its content so the button's own width constraint is
+        // what sizes it, rather than the stack stretching it to fill, and
+        // centre it so the button sits in the middle of the screen in both
+        // orientations rather than clinging to the leading edge.
+        strip.alignment = .center
         strip.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(strip)
+
+        // The button fills the strip (less the spinner's room) in portrait, and
+        // is 30% shorter in landscape. Both are measured against the same strip
+        // width, so landscape is exactly 70% of the full portrait length.
+        retryWidthFull = retry.widthAnchor.constraint(
+            equalTo: strip.widthAnchor, constant: -Self.spinnerReserve
+        )
+        retryWidthShort = retry.widthAnchor.constraint(
+            equalTo: strip.widthAnchor, multiplier: 0.7, constant: -0.7 * Self.spinnerReserve
+        )
 
         NSLayoutConstraint.activate([
             strip.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Grid.gutter + 6),
@@ -58,6 +83,7 @@ final class DeadEndStage: Stage {
             retry.heightAnchor.constraint(equalToConstant: Grid.touch + 6),
         ])
 
+        applyButtonWidth(wide: view.bounds.width > view.bounds.height)
         dressPlate(view.bounds.size)
     }
 
@@ -66,12 +92,34 @@ final class DeadEndStage: Stage {
         with coordinator: UIViewControllerTransitionCoordinator
     ) {
         super.viewWillTransition(to: size, with: coordinator)
-        coordinator.animate(alongsideTransition: { _ in self.dressPlate(size) }, completion: nil)
+        coordinator.animate(alongsideTransition: { _ in
+            self.dressPlate(size)
+            self.applyButtonWidth(wide: size.width > size.height)
+        }, completion: nil)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyButtonWidth(wide: view.bounds.width > view.bounds.height)
     }
 
     private func dressPlate(_ size: CGSize) {
         let wide = size.width > size.height
         plate.image = Vault.plate(wide ? Canvas.gateDarkWidePlate : Canvas.gateDarkUprightPlate)
+    }
+
+    /// Switches the button between its full portrait width and the 30%-shorter
+    /// landscape width, guarding so repeated layout passes do no needless work.
+    private func applyButtonWidth(wide: Bool) {
+        if wide {
+            guard !retryWidthShort.isActive else { return }
+            retryWidthFull.isActive = false
+            retryWidthShort.isActive = true
+        } else {
+            guard !retryWidthFull.isActive else { return }
+            retryWidthShort.isActive = false
+            retryWidthFull.isActive = true
+        }
     }
 
     /// Hands the attempt back to the warden, showing that something is

@@ -54,7 +54,12 @@ final class Hearth {
     /// Works out where this launch belongs. `then` runs on the main queue.
     /// A retry re-runs the whole pipeline rather than replaying a cached
     /// answer, which is what makes the retry button mean something.
-    func decide(then: @escaping (Where) -> Void) {
+    ///
+    /// `progress` reports the pipeline's completion as a 0...1 fraction on the
+    /// main queue, so the boot bar can fill against the real stages of the
+    /// decision rather than a fixed animation. It fires monotonically and ends
+    /// at 1 the moment a destination is settled.
+    func decide(progress: @escaping (Float) -> Void = { _ in }, then: @escaping (Where) -> Void) {
         // Only concurrent calls are folded together. A fresh call after a
         // failure is a fresh run.
         if running {
@@ -71,6 +76,7 @@ final class Hearth {
         // A push tap outranks everything: it is the one instruction the
         // player gave by hand.
         if let tapped = Tap.consume() {
+            progress(1)
             finish(.quiet(tapped))
             return
         }
@@ -79,17 +85,18 @@ final class Hearth {
         if Record.shared.route == .quiet,
            let address = Record.shared.address,
            Record.shared.addressIsLive() {
+            progress(1)
             finish(.quiet(address))
             return
         }
         if Record.shared.route == .native {
             // Still allowed one quiet recheck on later launches: a player who
             // arrived organically may be attributed afterwards.
-            recheck { where_ in self.finish(where_) }
+            recheck(progress: progress) { where_ in self.finish(where_) }
             return
         }
 
-        walk { where_ in self.finish(where_) }
+        walk(progress: progress) { where_ in self.finish(where_) }
     }
 
     private func finish(_ where_: Where) {
@@ -101,40 +108,59 @@ final class Hearth {
 
     /// The full pipeline: look for a tap, check the connection, wait for the
     /// attribution answer, then ask the backend.
-    private func walk(then: @escaping (Where) -> Void) {
+    private func walk(progress: @escaping (Float) -> Void, then: @escaping (Where) -> Void) {
         guard Gauge.shared.live else {
             // No route yet. Wait briefly for one before giving up, so a
             // device that is still bringing its radio up is not written off.
             Gauge.shared.settle { live in
                 guard live else { then(.stalled); return }
-                self.ask(then: then)
+                progress(Hearth.connected)
+                self.ask(progress: progress, then: then)
             }
             return
         }
-        ask(then: then)
+        progress(Hearth.connected)
+        ask(progress: progress, then: then)
     }
+
+    /// Checkpoints the decision passes through, as a share of its own bar
+    /// segment. The attribution wait owns the long stretch between the first
+    /// two; everything after it is quick.
+    private static let connected: Float = 0.10
+    private static let attributionBand: (Float, Float) = (0.10, 0.60)
+    private static let installed: Float = 0.62
+    private static let corrected: Float = 0.70
+    private static let asked: Float = 0.74
 
     /// One attempt at the backend. A failure on a first launch leaves the
     /// route undecided rather than committing to the game, so an offline
     /// install is not trapped there forever.
-    private func ask(then: @escaping (Where) -> Void) {
+    private func ask(progress: @escaping (Float) -> Void, then: @escaping (Where) -> Void) {
         guard Cap.ready else {
             // The build has no credentials: nothing can be decided yet.
+            progress(1)
             if Record.shared.route == .undecided { then(.stalled) } else { then(.native) }
             return
         }
 
-        Convert.shared.begin(within: installWindow) { _ in
+        let (bandLow, bandHigh) = Hearth.attributionBand
+        Convert.shared.begin(within: installWindow, onProgress: { share in
+            progress(bandLow + (bandHigh - bandLow) * share)
+        }) { _ in
+            progress(Hearth.installed)
             let raw = Convert.shared.conversion
             // An organic label on the first run is not trusted on its own:
             // the SDK often answers before the network reply lands, which
             // files paid installs as organic. The corrected data is preferred
             // when the re-query lands.
             Gcd.settle(raw, uid: Convert.shared.uid) { settled in
+                progress(Hearth.corrected)
                 Convert.shared.adopt(settled)
                 let body = Convert.shared.payload(push: Holder.shared.pushFields())
 
+                progress(Hearth.asked)
                 self.dispatch.ask(body) { verdict in
+                    progress(1)
                     guard let verdict else {
                         // No answer. A player already in the game stays there;
                         // otherwise nothing is committed, so a later online
@@ -173,9 +199,9 @@ final class Hearth {
     /// A later-launch look-up for a player currently pointed at the game.
     /// Failure is silent: the game stays where it is, and an offline launch
     /// opens the game at once rather than waiting out the request.
-    private func recheck(then: @escaping (Where) -> Void) {
-        guard Gauge.shared.live, Cap.ready else { then(.native); return }
-        ask { where_ in
+    private func recheck(progress: @escaping (Float) -> Void, then: @escaping (Where) -> Void) {
+        guard Gauge.shared.live, Cap.ready else { progress(1); then(.native); return }
+        ask(progress: progress) { where_ in
             switch where_ {
             case .quiet(let address):
                 then(.quiet(address))

@@ -24,14 +24,19 @@ final class Convert: NSObject {
     /// Starts the SDK and waits a bounded time for the install answer. A
     /// failure never hangs the boot: the gate is told there is no answer and
     /// proceeds, which is what keeps an offline install alive.
-    func begin(within span: TimeInterval, then: @escaping (Bool) -> Void) {
+    func begin(
+        within span: TimeInterval,
+        onProgress: ((Float) -> Void)? = nil,
+        then: @escaping (Bool) -> Void
+    ) {
         lock.lock(); defer { lock.unlock() }
-        guard !settled else { then(true); return }
+        guard !settled else { onProgress?(1); then(true); return }
 
         let key = Cap.attributionKey
         guard !key.isEmpty, !key.hasPrefix("PLACEHOLDER") else {
             // No key yet: report honestly rather than pretending.
             settled = true
+            onProgress?(1)
             then(false)
             return
         }
@@ -56,19 +61,27 @@ final class Convert: NSObject {
         uid = AppsFlyerLib.shared().getAppsFlyerUID()
 
         // The conversion answer arrives on its own schedule. Wait for it, but
-        // never longer than the caller allows.
-        let deadline = Date().addingTimeInterval(span)
+        // never longer than the caller allows. The elapsed share of the window
+        // is reported as it ticks, so the boot bar hooks onto this wait — the
+        // single longest stage of the launch — and climbs smoothly through it
+        // instead of freezing until the answer lands.
+        let startedAt = Date()
+        let deadline = startedAt.addingTimeInterval(span)
         func peek() {
             if self.settled || Date() >= deadline {
                 self.settled = true
+                onProgress?(1)
                 then(self.settled)
                 return
             }
+            let elapsed = Date().timeIntervalSince(startedAt)
+            onProgress?(Float(min(1, max(0, elapsed / span))))
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: peek)
         }
         peek()
         #else
         settled = true
+        onProgress?(1)
         then(false)
         #endif
     }

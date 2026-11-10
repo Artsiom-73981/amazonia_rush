@@ -16,9 +16,17 @@ final class ScreenStage: Stage, WKNavigationDelegate, WKUIDelegate {
     override var orientationWish: UIInterfaceOrientationMask { .allButUpsideDown }
     override var wantsPurse: Bool { false }
     override var hidesDock: Bool { true }
+    override var playsAudio: Bool { false }
 
     private let address: String
     private var pane: WKWebView!
+    // The web view is pinned to the view's edges with constant insets kept in
+    // step with the device's real safe area, rather than to the safe-area
+    // guide, whose top collapses once the status bar is hidden.
+    private var paneTop: NSLayoutConstraint!
+    private var paneLeading: NSLayoutConstraint!
+    private var paneTrailing: NSLayoutConstraint!
+    private var paneBottom: NSLayoutConstraint!
     private let backfill = UIView()
     private let spinner = UIActivityIndicatorView(style: .large)
     private let wash = UIView()
@@ -90,13 +98,12 @@ final class ScreenStage: Stage, WKNavigationDelegate, WKUIDelegate {
         pane.customUserAgent = Signal.userAgent
         pane.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(pane)
-        let guides = view.safeAreaLayoutGuide
-        NSLayoutConstraint.activate([
-            pane.topAnchor.constraint(equalTo: guides.topAnchor),
-            pane.leadingAnchor.constraint(equalTo: guides.leadingAnchor),
-            pane.trailingAnchor.constraint(equalTo: guides.trailingAnchor),
-            pane.bottomAnchor.constraint(equalTo: guides.bottomAnchor),
-        ])
+        paneTop = pane.topAnchor.constraint(equalTo: view.topAnchor)
+        paneLeading = pane.leadingAnchor.constraint(equalTo: view.leadingAnchor)
+        paneTrailing = pane.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        paneBottom = pane.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        NSLayoutConstraint.activate([paneTop, paneLeading, paneTrailing, paneBottom])
+        applySafeInsets()
 
         wash.backgroundColor = Hide.pitch
         wash.pin(into: view)
@@ -117,9 +124,47 @@ final class ScreenStage: Stage, WKNavigationDelegate, WKUIDelegate {
         with coordinator: UIViewControllerTransitionCoordinator
     ) {
         super.viewWillTransition(to: size, with: coordinator)
-        coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.applySafeInsets()
+        }, completion: { [weak self] _ in
             self?.reflow()
-        }
+        })
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        applySafeInsets()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applySafeInsets()
+    }
+
+    /// Keeps the web view inside the device's real safe area, in every
+    /// orientation. The controller's own `safeAreaInsets` cannot be trusted:
+    /// with the status bar hidden its top inset collapses well below the notch
+    /// (e.g. 23pt instead of the device's 62pt), which let the page slip up
+    /// under the sensor housing. The window's insets are the physical ones and
+    /// never collapse, so the per-edge maximum of the two is always the true
+    /// safe area — the same inset the page sits in whatever the launch did.
+    private func applySafeInsets() {
+        guard paneTop != nil else { return }
+        let own = view.safeAreaInsets
+        let device = view.window?.safeAreaInsets ?? own
+        let top = max(own.top, device.top)
+        let left = max(own.left, device.left)
+        let right = max(own.right, device.right)
+        let bottom = max(own.bottom, device.bottom)
+        guard paneTop.constant != top
+            || paneLeading.constant != left
+            || paneTrailing.constant != -right
+            || paneBottom.constant != -bottom
+        else { return }
+        paneTop.constant = top
+        paneLeading.constant = left
+        paneTrailing.constant = -right
+        paneBottom.constant = -bottom
     }
 
     private func load(_ link: String) {

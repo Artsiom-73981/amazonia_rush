@@ -6,6 +6,9 @@ final class BootStage: Stage {
     override var orientationWish: UIInterfaceOrientationMask { .allButUpsideDown }
     override var wantsPurse: Bool { false }
     override var hidesDock: Bool { true }
+    // The loading screen is silent: no cues, no music. The bed only lifts once
+    // the native game is on screen.
+    override var playsAudio: Bool { false }
 
     private let plate = UIImageView()
     private let wordmark = UIImageView()
@@ -33,6 +36,25 @@ final class BootStage: Stage {
     /// Number of warm-up chapters in `march`; the bar's checkpoints are spaced
     /// across them.
     private let chapterCount = 5
+
+    // --- the bar -----------------------------------------------------------
+    //
+    // The fill is split between two sources that run in parallel, so it climbs
+    // against real work rather than a fixed animation:
+    //   * the warm-up chapters own the first `warmupWeight` of the bar, and
+    //   * the destination decision owns the rest, reporting its own 0...1
+    //     progress through its stages (connection, attribution, backend).
+    // The decision's longest stage — the attribution wait — reports its
+    // elapsed share continuously, so the bar keeps moving through it instead
+    // of jumping to a checkpoint and freezing. The bar only reaches 1 once a
+    // real destination (game or quiet side) is settled, which is the instant
+    // before hand-over, so a full bar always means "about to open".
+
+    /// Share of the bar owned by the common warm-up; the decision owns 1 minus
+    /// this.
+    private let warmupWeight: Float = 0.30
+    /// The decision's own completion, 0...1, as reported by the quiet side.
+    private var decisionFraction: Float = 0
 
     override func assemble() {
         view.backgroundColor = Hide.pitch
@@ -124,14 +146,49 @@ final class BootStage: Stage {
         super.viewDidAppear(animated)
         guard pulse == nil else { return }
         opened = Date()
+        startPulse()
+        beginLaunch()
+    }
+
+    private func startPulse() {
         let link = CADisplayLink(target: self, selector: #selector(beat))
         link.add(to: .main, forMode: .common)
         pulse = link
-        // The warm-up and the destination decision run side by side: the bar
-        // walks through its checkpoints while the quiet side is asked where
-        // this launch belongs. A dead connection is caught by the decision,
-        // not the warm-up, so an offline visitor is shown the no-connection
-        // screen promptly instead of watching a full bar first.
+    }
+
+    /// Every launch except a returning native (organic) one must see the
+    /// network before it can decide anything. A returning native player is
+    /// sent straight to the game and tolerates being offline, so it alone
+    /// skips the check.
+    private var gatesOnConnectivity: Bool {
+        Record.shared.route != .native
+    }
+
+    /// The first thing a launch does. For anything but a returning native
+    /// player, the connection is checked before the bar moves at all: if there
+    /// is none, the no-connection screen is shown at once, with the bar left at
+    /// zero, because a filling bar with no connection only misleads. Once the
+    /// connection returns (via retry) this runs again and the load proceeds
+    /// exactly as an online launch does.
+    private func beginLaunch() {
+        guard gatesOnConnectivity else {
+            proceed()
+            return
+        }
+        Gauge.shared.settle { [weak self] live in
+            guard let self, !self.handed else { return }
+            guard live else {
+                self.handStalled()
+                return
+            }
+            self.proceed()
+        }
+    }
+
+    /// Runs the warm-up and the destination decision together. The bar fills
+    /// against the real stages of both, the same way whether this launch opens
+    /// the game or the quiet side.
+    private func proceed() {
         march()
         beginDecisionWhenActive()
     }
@@ -223,10 +280,12 @@ final class BootStage: Stage {
     }
 
     @objc private func beat() {
-        // The bar always walks toward its target so the fill reads as smooth
-        // rather than jumping between stages.
+        // The bar always eases toward its target so the fill reads as smooth
+        // rather than jumping between stages. The step never overshoots the
+        // target, so while the target sits at zero (an offline launch waiting
+        // on the connection gate) the bar does not creep forward at all.
         let gap = target - shown
-        shown += max(0.0032, gap * 0.08)
+        shown += min(gap, max(0.0032, gap * 0.08))
         shown = min(shown, target)
         bar.pour(shown, animated: false)
 
@@ -267,16 +326,20 @@ final class BootStage: Stage {
                 ])
             },
             {
+                // The loading screen stays silent; the music bed is not lifted
+                // here. It starts only once the native game is on screen (see
+                // `Director.openTemple`), so nothing plays during loading or on
+                // the way into the quiet side.
                 _ = Vault.plate(0)
-                Deck.shared.liftBed()
             },
         ]
 
         guard chapter < chapters.count else {
             // The common warm-up is done. The decision (running in parallel)
-            // now owns the last stretch of the bar; it tops out only once a
-            // destination is known.
+            // owns the rest of the bar; it tops out only once a destination is
+            // known.
             chaptersDone = true
+            chapter = chapterCount
             recomputeTarget()
             return
         }
@@ -294,18 +357,13 @@ final class BootStage: Stage {
         }
     }
 
-    /// Where the bar should be heading right now. It climbs through the
-    /// warm-up checkpoints, holds just short of full while the destination is
-    /// still being decided, and only reaches 1 once both the warm-up is done
-    /// and a real launch (game or quiet side) has been settled.
+    /// Where the bar should be heading right now: the warm-up's share of its
+    /// chapters plus the decision's share of its reported progress. It reaches
+    /// 1 only when both the warm-up is done and a real destination has been
+    /// settled (`decisionFraction == 1`), which is the moment before hand-over.
     private func recomputeTarget() {
-        if chaptersDone, let where_ = verdict, !where_.isStalled {
-            target = 1
-        } else if chaptersDone {
-            target = 0.92
-        } else {
-            target = Float(chapter) / Float(chapterCount) * 0.7
-        }
+        let warm = Float(min(chapter, chapterCount)) / Float(chapterCount)
+        target = warmupWeight * warm + (1 - warmupWeight) * decisionFraction
     }
 
     /// Settles the audio preferences, then asks the quiet side where this
@@ -343,8 +401,14 @@ final class BootStage: Stage {
         #endif
         // The quiet side decides what this launch is. Everything else on this
         // screen is the same for every player; the destination depends on what
-        // the backend says about them.
-        Hearth.shared.decide { [weak self] where_ in
+        // the backend says about them. The bar hooks onto the decision's
+        // reported stages so it keeps climbing while the backend is consulted.
+        Hearth.shared.decide(progress: { [weak self] fraction in
+            guard let self else { return }
+            // Monotonic: the bar never walks backward between stages.
+            self.decisionFraction = max(self.decisionFraction, fraction)
+            self.recomputeTarget()
+        }) { [weak self] where_ in
             guard let self else { return }
             self.verdict = where_
             if where_.isStalled {
@@ -353,6 +417,7 @@ final class BootStage: Stage {
                 // filling the bar — a full bar would pretend the load finished.
                 self.handStalled()
             } else {
+                self.decisionFraction = 1
                 self.recomputeTarget()
             }
         }
@@ -373,7 +438,8 @@ final class BootStage: Stage {
         pulse?.invalidate()
         pulse = nil
         bar.pour(1, animated: false)
-        Deck.shared.cue(Canvas.loadingCompleteCue, gain: 0.8)
+        // No completion chime: the loading screen is silent end to end. The
+        // native game brings its own sound once it is on screen.
         steer(where_)
     }
 
@@ -415,17 +481,18 @@ final class BootStage: Stage {
         target = 0
         chapter = 0
         chaptersDone = false
+        decisionFraction = 0
         verdict = nil
         handed = false
         deciding = false
         opened = Date()
         bar.pour(0, animated: false)
         loading.text = Vault.say(Lexeme.bootLoading)
-        let link = CADisplayLink(target: self, selector: #selector(beat))
-        link.add(to: .main, forMode: .common)
-        pulse = link
-        march()
-        launchDecision()
+        startPulse()
+        // Re-check the connection first, exactly as a cold launch does, so a
+        // retry that still has no network returns to the no-connection screen
+        // without the bar filling.
+        beginLaunch()
     }
 
     private func enterQuiet(_ address: String) {

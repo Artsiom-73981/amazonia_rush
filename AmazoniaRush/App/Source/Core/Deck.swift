@@ -42,7 +42,10 @@ final class Deck {
     }
 
     func cue(_ index: Int, gain: Float = 1) {
-        guard cuesOn, let bench = fetch(index) else { return }
+        // Sound effects belong to the native game only. The loading screen and
+        // the quiet-side screens (webview, the notification prompt, the
+        // no-connection screen) report that they want no sound while on top.
+        guard cuesOn, Director.shared.audioAllowed, let bench = fetch(index) else { return }
         if let idle = bench.first(where: { !$0.isPlaying }) {
             idle.volume = gain
             idle.currentTime = 0
@@ -77,7 +80,10 @@ final class Deck {
     // --- generated bed -----------------------------------------------------
 
     func liftBed() {
-        guard bedOn else { return }
+        // The music bed is native-only, just like the cues: it never starts
+        // over the loading screen or the quiet side, whichever path asked for
+        // it. The screen on top is the single source of truth.
+        guard bedOn, Director.shared.audioAllowed else { return }
         if !bedRunning { buildBed() }
         bedLevel = 0
         if !engine.isRunning { try? engine.start() }

@@ -35,9 +35,11 @@ final class Hearth {
     /// The ceiling on how long the install answer is waited for before the
     /// config request is sent. It is a maximum, not a fixed delay: the wait in
     /// `Convert.begin` returns the instant the SDK's conversion callback lands,
-    /// so a fast install is never slowed by it. It must clear the SDK's ATT
-    /// hold (`waitForATTUserAuthorization`, 6 s) *plus* the remote-config fetch
-    /// *plus* the install-event round-trip and any retries: observed traces put
+    /// so a fast install is never slowed by it. The ceiling only starts
+    /// counting once the ATT prompt is resolved — a player reading the prompt
+    /// pauses it rather than spending it — so it need only cover the
+    /// remote-config fetch *plus* the install-event round-trip and any retries
+    /// after the choice is made: observed traces put
     /// a probabilistic (no-IDFA) conversion callback as late as ~17 s on a cold
     /// first launch, and a ceiling under that posts an empty body — which the
     /// backend reads as organic and drops a paid install into the game. The
@@ -74,8 +76,15 @@ final class Hearth {
         answered = then
 
         // A push tap outranks everything: it is the one instruction the
-        // player gave by hand.
+        // player gave by hand. It also fixes this visitor as a web visitor —
+        // the route is marked quiet so a later plain launch is treated as a
+        // returning web user (the config URL, or the last one the config
+        // cached, never the game) and so the token re-query (gated on a quiet
+        // route) can keep that cached URL fresh. The pushed address itself is
+        // one-shot: it is shown now but never cached, so it opens only on the
+        // tap and never hijacks a later launch that was not from a push.
         if let tapped = Tap.consume() {
+            Record.shared.route = .quiet
             progress(1)
             finish(.quiet(tapped))
             return
@@ -234,6 +243,11 @@ final class Hearth {
     /// Used for a notification tapped in the foreground or from the background.
     func openTapped(_ address: String) {
         guard Director.shared.crown != nil, let url = URL(string: address) else { return }
+        // A warm tap marks the visitor as a web visitor the same way a cold
+        // one does, so a later plain launch is a returning web user. The
+        // pushed address stays one-shot and is not cached — only this tap
+        // opens it; a later launch loads the config URL (or the cached one).
+        Record.shared.route = .quiet
         Director.shared.go(ScreenStage(address: url.absoluteString))
     }
 
